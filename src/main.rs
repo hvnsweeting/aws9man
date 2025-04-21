@@ -1,5 +1,5 @@
-use aws_config::BehaviorVersion;
 use aws_config::meta::region::RegionProviderChain;
+use aws_config::BehaviorVersion;
 use aws_sdk_health::types::EntityFilter;
 use aws_sdk_health::{Client, Error};
 use aws_types::region::Region;
@@ -54,22 +54,29 @@ async fn main() -> Result<(), Error> {
     };
 
     // Set up AWS region
-    let region_provider = match args.region {
-        Some(region) => RegionProviderChain::first_try(Region::new(region)),
-        None => RegionProviderChain::default_provider(),
+    let target_region = match args.region {
+        Some(region) => Region::new(region),
+        None => RegionProviderChain::default_provider()
+            .region()
+            .await
+            .expect("no default region was set"),
     };
+
+    // Health API only available in us-east-1
+    let health_api_region = Region::from_static("us-east-1");
 
     // Create AWS config and client
     let config = aws_config::defaults(BehaviorVersion::latest())
-        .region(region_provider)
+        .region(health_api_region)
         .load()
         .await;
     let client = Client::new(&config);
 
     println!(
-        "Fetching AWS Health events from {} to {}",
+        "Fetching AWS Health events from {} to {} for region {}",
         start_date.format("%Y-%m-%d %H:%M:%S UTC"),
-        end_date.format("%Y-%m-%d %H:%M:%S UTC")
+        end_date.format("%Y-%m-%d %H:%M:%S UTC"),
+        target_region
     );
 
     // Create CSV filename based on current date
@@ -86,7 +93,7 @@ async fn main() -> Result<(), Error> {
         .unwrap();
 
     // Get health events
-    let events = get_health_events(&client, start_date, end_date).await?;
+    let events = get_health_events(&client, start_date, end_date, target_region).await?;
 
     for event in events {
         // Print to stdout
@@ -134,6 +141,7 @@ async fn get_health_events(
     client: &Client,
     start_time: DateTime<Utc>,
     end_time: DateTime<Utc>,
+    target_region: Region,
 ) -> Result<Vec<HealthEvent>, Error> {
     let mut events = Vec::new();
 
@@ -142,6 +150,7 @@ async fn get_health_events(
         .describe_events()
         .filter(
             aws_sdk_health::types::EventFilter::builder()
+                .regions(target_region.to_string())
                 .start_times(
                     aws_sdk_health::types::DateTimeRange::builder()
                         .from(aws_smithy_types::DateTime::from_millis(
