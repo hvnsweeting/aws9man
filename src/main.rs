@@ -21,7 +21,7 @@ struct Args {
     #[arg(long)]
     to_utc: Option<String>,
 
-    /// AWS Region
+    /// Get health events for which AWS region
     #[arg(long)]
     region: Option<String>,
 }
@@ -80,7 +80,11 @@ async fn main() -> Result<(), Error> {
     );
 
     // Create CSV filename based on current date
-    let filename = format!("{}_aws_health.csv", Utc::now().format("%Y%m%d"));
+    let filename = format!(
+        "{}_{}_aws_health.csv",
+        Utc::now().format("%Y%m%d"),
+        target_region
+    );
     let file_path = Path::new(&filename);
 
     // Create CSV writer
